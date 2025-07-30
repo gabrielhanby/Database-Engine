@@ -14,11 +14,11 @@ class FlatFilter:
     table: str                  = "*"      # "*" ⇒ all tables
     field: str                  = "*"      # "*" ⇒ all columns
     operator: Operator          = "contains"
-    value: Any                   = None
+    value: Any                  = None
     logic: Logic                = "and"    # default chain
     index_by: Optional[str]     = None     # delimiter for formatting
-    position: SplitPosition      = "none"   # how to keep delimiter
-    group: int                   = 1        # default filter group
+    position: SplitPosition     = "none"   # how to keep delimiter
+    group: int                  = 1        # default filter group
 
 # --- how to combine multiple groups ---
 @dataclass
@@ -104,3 +104,21 @@ class ReadFormatPackage:
     filters:     List[FlatFilter]
     group_logic: List[GroupLogic]
     records:     List[Dict[str, Any]]
+
+# --- batch helpers ---
+@dataclass
+class ChangeOp:
+    """
+    A single create/update operation on one table.
+    """
+    table: str
+    fields: Dict[str, Any]
+
+@dataclass
+class BatchPackage:
+    """
+    A batch of named groups, where each key is either:
+      • an existing UUID → apply updates, or
+      • a new “group name” → insert new records
+    """
+    groups: Dict[str, List[ChangeOp]]

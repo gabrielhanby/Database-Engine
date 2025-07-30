@@ -1,62 +1,29 @@
-# src/main.py
-
-import json
-from datetime import datetime
+import logging
 from pathlib import Path
-
-from utils.types        import SearchPackageFlat, ReadPackage, ReadFormatPackage
-from tools.search      import search
-from tools.read        import read_records
-from tools.read_format import format_search_results
+from tools.search       import search_records
+from tools.read         import read_records
+from tools.read_format  import format_search_results
+from tools.flagger      import Flagger
+from utils.config       import load_settings
 
 def main():
-    # 1) build the filter package
-    search_config = {
-        "filters": [
-            {
-                "table":    "Notes",
-                "field":    "body",
-                "operator": "contains",
-                "value":    "-GH-",
-                "logic":    "and",
-                "index_by": "\n",
-                "position": "none"
-            }
-        ]
-    }
+    logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+    logging.debug("[DEBUG] Starting main pipeline")
 
-    # 2) load & validate
-    pkg = SearchPackageFlat.from_dict(search_config)
-
-    # 3) run the search
-    result_pkg = search(pkg)
-
-    # 4) read full records for each table in the filters
-    tables = {
-        f.table for f in result_pkg.filters
-        if f.table != "*"
-    }
-    all_records = []
-    for table in tables:
-        read_pkg = ReadPackage(table=table, uuids=result_pkg.uuids)
-        all_records.extend(read_records(read_pkg))
-
-    # 5) format the results
-    fmt_pkg = ReadFormatPackage(
-        filters     = result_pkg.filters,
-        group_logic = result_pkg.group_logic,
-        records     = all_records
+    settings = load_settings(
+        Path(__file__).parent.parent / 'settings' / 'database_settings.json'
     )
-    report = format_search_results(fmt_pkg)
+    pkg     = settings.build_search_package()
+    conn    = settings.get_connection()
+    db_type = settings.get_db_type()
+    flagger = Flagger()
 
-    # 6) write to file
-    timestamp   = datetime.now().strftime("%Y%m%dT%H%M")
-    out_dir     = Path(__file__).parent.parent / "output"
-    out_dir.mkdir(exist_ok=True)
-    report_path = out_dir / f"report_{timestamp}.txt"
-    report_path.write_text(report, encoding="utf-8")
+    logging.debug(f"[DEBUG] Search package: {pkg}")
+    matches = search_records(pkg, conn, db_type, flagger)
+    records = read_records(pkg, conn, db_type)
+    output  = format_search_results(matches, records)
 
-    print(f"Report written to {report_path}")
+    print(output)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

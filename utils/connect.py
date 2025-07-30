@@ -1,31 +1,45 @@
+# utils/connect.py
+
 import sqlite3
-from utils.config import get_db_path, get_uuid_field
+import psycopg2
+import mysql.connector
 
-def get_connection() -> sqlite3.Connection:
-    return sqlite3.connect(get_db_path())
+from utils.config import get_settings, get_primary_identifier
+from tools.schema_introspect import get_tables, validate_primary_identifier, get_columns
+from tools.flagger import Flagger
 
-def validate_uuid_column(conn: sqlite3.Connection, table: str):
-    uuid_col = get_uuid_field()
-    cur = conn.execute(f"PRAGMA table_info({table});")
-    cols = [row[1] for row in cur.fetchall()]
-    if uuid_col not in cols:
-        raise ValueError(f"Table '{table}' missing UUID column '{uuid_col}'")
+def get_connection():
+    settings = get_settings()
+    db_type = settings.get("database_type", "sqlite").lower()
+    conn_info = settings.get("connection", {})
 
-def get_all_tables(conn: sqlite3.Connection) -> list[str]:
-    cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
-    )
-    tables = [r[0] for r in cur.fetchall()]
-    # filter out tables without your UUID column
-    valid = []
-    for t in tables:
-        try:
-            validate_uuid_column(conn, t)
-            valid.append(t)
-        except ValueError:
-            continue
-    return valid
+    if db_type == "sqlite":
+        return sqlite3.connect(conn_info.get("path", "data/database.db"))
+    elif db_type == "postgres":
+        return psycopg2.connect(
+            host=conn_info["host"],
+            port=conn_info.get("port", 5432),
+            user=conn_info["user"],
+            password=conn_info["password"],
+            dbname=conn_info["database"]
+        )
+    elif db_type == "mysql":
+        return mysql.connector.connect(
+            host=conn_info["host"],
+            port=conn_info.get("port", 3306),
+            user=conn_info["user"],
+            password=conn_info["password"],
+            database=conn_info["database"]
+        )
+    else:
+        raise ValueError(f"Unsupported database type: {db_type}")
 
-def get_columns(conn: sqlite3.Connection, table: str) -> list[str]:
-    cur = conn.execute(f"PRAGMA table_info({table});")
-    return [row[1] for row in cur.fetchall()]
+def validate_all_tables(conn, db_type: str, flagger: Flagger):
+    identifier = get_primary_identifier()
+    for table in get_tables(conn, db_type):
+        validate_primary_identifier(table, conn, db_type, identifier, flagger)
+
+def get_columns(conn, table: str, db_type: str) -> list[str]:
+    # This is now forwarded to schema_introspect, kept for backward compatibility
+    from tools.schema_introspect import get_columns as get_cols
+    return get_cols(conn, table, db_type)

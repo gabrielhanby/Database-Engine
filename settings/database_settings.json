@@ -1,4 +1,7 @@
 {
-  "db_path": "data/database.db",
-  "uuid_field": "digitalID"
+  "database_type": "sqlite",
+  "primary_identifier": "digitalID",
+  "connection": {
+    "path": "data/database.db"
+  }
 }
